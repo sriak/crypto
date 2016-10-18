@@ -98,11 +98,12 @@ func (s *Schnorr) Init(suite abstract.Suite, info Threshold, longterm *SharedSec
 // You call this function when you want a new signature to be issued on a specific message.
 // The security of the distributed schnorr signature protocol is the same as for the regular :
 // The random secret "must be fresh* for "each* signature / signed message (hence the 'NewRound')
-func (s *Schnorr) NewRound(random *SharedSecret, h hash.Hash) error {
+func (s *Schnorr) NewRound(random *SharedSecret, h hash.Hash, msg []byte) error {
 	s.random = random
 	s.hash = nil
 	s.partials = make([]*SchnorrPartialSig, s.info.N)
-	hash, err := s.hashMessage(h.Sum(nil), s.random.Pub.SecretCommit())
+
+	hash, err := s.hashMessage(h, msg, s.random.Pub.SecretCommit(), s.longterm.Pub.SecretCommit())
 	if err != nil {
 		return errors.New(fmt.Sprintf("Unable to hash the message with the given shared secret : %v", err))
 	}
@@ -111,17 +112,20 @@ func (s *Schnorr) NewRound(random *SharedSecret, h hash.Hash) error {
 	return nil
 }
 
-// Returns a hash of the message and the random secret:
-// H( m || V )
+// Returns a hash of the random secret, the longterm secret and the message:
+// H( V || Y || m )
 // Returns an error if something went wrong with the marshalling
-func (s *Schnorr) hashMessage(msg []byte, v abstract.Point) (abstract.Scalar, error) {
-	vb, err := v.MarshalBinary()
-	if err != nil {
+func (s *Schnorr) hashMessage(h hash.Hash, msg []byte, v abstract.Point, y abstract.Point) (abstract.Scalar, error) {
+	h.Reset()
+	if _, err := v.MarshalTo(h); err != nil {
 		return nil, err
 	}
-	c := s.suite.Cipher(vb)
-	c.Message(nil, nil, msg)
-	return s.suite.Scalar().Pick(c), nil
+	if _, err := y.MarshalTo(h); err != nil {
+		return nil, err
+	}
+	h.Write(msg)
+	hash := h.Sum(nil)
+	return s.suite.Scalar().SetBytes(hash), nil
 }
 
 // Verifies if the received structures are good and
@@ -147,7 +151,7 @@ func (s *Schnorr) verify() error {
 func (s *Schnorr) verifyPartialSig(ps *SchnorrPartialSig) error {
 	// compute the left part of the equation
 	left := s.suite.Point().Mul(s.suite.Point().Base(), *ps.Part)
-	// compute the right part of the equation
+	// compute/crypto/util the right part of the equation
 	right := s.suite.Point().Add(s.random.Pub.Eval(ps.Index), s.suite.Point().Mul(s.longterm.Pub.Eval(ps.Index), *s.hash))
 	if !left.Equal(right) {
 		return errors.New(fmt.Sprintf("Partial Signature of peer %d could not be validated.", ps.Index))
@@ -162,10 +166,11 @@ func (s *Schnorr) index() int {
 }
 
 // Reveals the partial signature for this peer
-// Si = Ri + H(m || V) * Pi
+// Si = Ri + H( V || Y || m) * Pi
 // with :
 //  - Ri = share of the random secret for peer i
 //  - V  = public commitment of the random secret (i.e. Public random poly evaluated at point 0 )
+//  - Y  = public commitment of the longterm secret
 //  - Pi = share of the longterm secret for peer i
 // This signature is to be sent to each other peer
 func (s *Schnorr) RevealPartialSig() *SchnorrPartialSig {
@@ -243,13 +248,13 @@ func (s *Schnorr) Sig() (*SchnorrSig, error) {
 // check. Think of the schnorr signature as a black box having two inputs:
 //  - a message to be signed + a random secret ==> NewRound
 //  - a message + a signature to check on ==> VerifySchnorrSig
-func (s *Schnorr) VerifySchnorrSig(sig *SchnorrSig, h hash.Hash) error {
+func (s *Schnorr) VerifySchnorrSig(sig *SchnorrSig, h hash.Hash, msg []byte) error {
 	// gamma * G
 	left := s.suite.Point().Mul(s.suite.Point().Base(), *sig.Signature)
 
 	randomCommit := sig.Random.SecretCommit()
 	publicCommit := s.longterm.Pub.SecretCommit()
-	hash, err := s.hashMessage(h.Sum(nil), randomCommit)
+	hash, err := s.hashMessage(h, msg, randomCommit, publicCommit)
 	if err != nil {
 		return err
 	}

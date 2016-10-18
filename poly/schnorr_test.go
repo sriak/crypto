@@ -7,12 +7,11 @@ import (
 	"testing"
 )
 
-var m string = "Hello World"
-var msg hash.Hash
+var msg []byte = []byte("Hello World")
+var h hash.Hash
 
 func init() {
-	msg = testSuite.Hash()
-	msg.Write([]byte(m))
+	h = testSuite.Hash()
 }
 
 func TestHashMessage(t *testing.T) {
@@ -20,8 +19,8 @@ func TestHashMessage(t *testing.T) {
 	point := testSuite.Point().Base()
 	s1 := new(Schnorr).Init(testSuite, tr, nil)
 	s2 := new(Schnorr).Init(testSuite, tr, nil)
-	h1, _ := s1.hashMessage(msg.Sum(nil), point)
-	h2, _ := s2.hashMessage(msg.Sum(nil), point)
+	h1, _ := s1.hashMessage(h, msg, point, point)
+	h2, _ := s2.hashMessage(h, msg, point, point)
 	if !h1.Equal(h2) {
 		t.Error("hash message does not produce equal hashes")
 	}
@@ -34,11 +33,11 @@ func TestNewRound(t *testing.T) {
 	randoms := generateSharedSecrets(pl)
 	randoms2 := generateSharedSecrets(pl)
 	for i, _ := range schnorrs {
-		err := schnorrs[i].NewRound(randoms[i], msg)
+		err := schnorrs[i].NewRound(randoms[i], h, msg)
 		if err != nil {
 			t.Error(fmt.Sprintf("NewRound should validate : %v", err))
 		}
-		err = schnorrs[i].NewRound(randoms2[i], msg)
+		err = schnorrs[i].NewRound(randoms2[i], h, msg)
 		if err != nil {
 			t.Error(fmt.Sprintf("Second NewRound should validate : %v", err))
 		}
@@ -55,7 +54,7 @@ func TestRevealPartialSig(t *testing.T) {
 	schnorrs := generateSchnorrStructs(pl)
 	randoms := generateSharedSecrets(pl)
 	for i, _ := range schnorrs {
-		err := schnorrs[i].NewRound(randoms[i], msg)
+		err := schnorrs[i].NewRound(randoms[i], h, msg)
 		if err != nil {
 			t.Error(fmt.Sprintf("NewRound should validate : %v", err))
 		}
@@ -80,7 +79,7 @@ func TestAddPartialSig(t *testing.T) {
 	schnorrs := generateSchnorrStructs(pl)
 	randoms := generateSharedSecrets(pl)
 	for i, _ := range schnorrs {
-		err := schnorrs[i].NewRound(randoms[i], msg)
+		err := schnorrs[i].NewRound(randoms[i], h, msg)
 		if err != nil {
 			t.Error(fmt.Sprintf("NewRound should validate : %v", err))
 		}
@@ -121,7 +120,7 @@ func TestSchnorrSig(t *testing.T) {
 	schnorrs := generateSchnorrStructs(pl)
 	randoms := generateSharedSecrets(pl)
 	for i, _ := range schnorrs {
-		err := schnorrs[i].NewRound(randoms[i], msg)
+		err := schnorrs[i].NewRound(randoms[i], h, msg)
 		if err != nil {
 			t.Error(fmt.Sprintf("NewRound should validate : %v", err))
 		}
@@ -169,7 +168,7 @@ func TestVerifySchnorrSig(t *testing.T) {
 	schnorrs := generateSchnorrStructs(pl)
 	randoms := generateSharedSecrets(pl)
 	for i, _ := range schnorrs {
-		err := schnorrs[i].NewRound(randoms[i], msg)
+		err := schnorrs[i].NewRound(randoms[i], h, msg)
 		if err != nil {
 			t.Error(fmt.Sprintf("NewRound should validate : %v", err))
 		}
@@ -196,9 +195,8 @@ func TestVerifySchnorrSig(t *testing.T) {
 	}
 	// Verify the signature amongst each peers
 	for i, _ := range schnorrs {
-		newMsg := testSuite.Hash()
-		newMsg.Write([]byte(m))
-		err := schnorrs[i].VerifySchnorrSig(sig[0], newMsg)
+		newHash := testSuite.Hash()
+		err := schnorrs[i].VerifySchnorrSig(sig[0], newHash, msg)
 		if err != nil {
 			t.Error(fmt.Sprintf("VerifySchnorrSig on peer %d should validate the signature : %v", i, err))
 		}
@@ -211,7 +209,7 @@ func TestPartialSchnorrSigMarshalling(t *testing.T) {
 	schnorrs := generateSchnorrStructs(pl)
 	randoms := generateSharedSecrets(pl)
 	for i, _ := range schnorrs {
-		err := schnorrs[i].NewRound(randoms[i], msg)
+		err := schnorrs[i].NewRound(randoms[i], h, msg)
 		if err != nil {
 			t.Error(fmt.Sprintf("NewRound should validate : %v", err))
 		}
@@ -241,7 +239,7 @@ func TestSchnorrSigMarshalling(t *testing.T) {
 	schnorrs := generateSchnorrStructs(pl)
 	randoms := generateSharedSecrets(pl)
 	for i, _ := range schnorrs {
-		err := schnorrs[i].NewRound(randoms[i], msg)
+		err := schnorrs[i].NewRound(randoms[i], h, msg)
 		if err != nil {
 			t.Error(fmt.Sprintf("NewRound should validate : %v", err))
 		}
